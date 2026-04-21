@@ -1,0 +1,12 @@
+[tool.black]
+line-length = 100
+
+[tool.pytest.ini_options]
+addopts = "-q --cov=microservices --cov-report=term-missing --cov-fail-under=70"
+testpaths = ["microservices", "tests"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true

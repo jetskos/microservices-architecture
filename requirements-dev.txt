@@ -1,0 +1,10 @@
+pytest
+pytest-cov
+httpx
+fastapi
+uvicorn
+pyjwt
+bcrypt
+prometheus-client
+flake8
+mypy

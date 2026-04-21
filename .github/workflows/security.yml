@@ -1,0 +1,35 @@
+name: Security
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build auth image
+        run: docker build -t auth-service:scan ./microservices/auth-service
+      - name: Build resource image
+        run: docker build -t resource-service:scan ./microservices/resource-service
+      - name: Build reservation image
+        run: docker build -t reservation-service:scan ./microservices/reservation-service
+      - name: Trivy scan auth
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: auth-service:scan
+          format: table
+          exit-code: '0'
+      - name: Trivy scan resource
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: resource-service:scan
+          format: table
+          exit-code: '0'
+      - name: Trivy scan reservation
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: reservation-service:scan
+          format: table
+          exit-code: '0'

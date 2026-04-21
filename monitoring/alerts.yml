@@ -1,0 +1,18 @@
+groups:
+  - name: microservices-alerts
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(auth_errors_total[5m]) + rate(resource_errors_total[5m]) + rate(reservation_errors_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+
+      - alert: SlowResponses
+        expr: histogram_quantile(0.95, sum(rate(auth_request_latency_seconds_bucket[5m])) by (le)) > 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 latency above 2 seconds"
