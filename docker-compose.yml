@@ -1,0 +1,107 @@
+version: '3.9'
+
+services:
+  auth-service:
+    build: ./microservices/auth-service
+    environment:
+      JWT_SECRET: change-me-in-prod
+      SERVICE_API_KEY: reservation-secret
+    ports:
+      - "8001:8001"
+
+  resource-service:
+    build: ./microservices/resource-service
+    environment:
+      JWT_SECRET: change-me-in-prod
+    ports:
+      - "8002:8002"
+
+  reservation-service:
+    build: ./microservices/reservation-service
+    environment:
+      JWT_SECRET: change-me-in-prod
+      AUTH_SERVICE_URL: http://auth-service:8001
+      RESOURCE_SERVICE_URL: http://resource-service:8002
+      SERVICE_API_KEY: reservation-secret
+    ports:
+      - "8003:8003"
+    depends_on:
+      - auth-service
+      - resource-service
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:80"
+    depends_on:
+      - auth-service
+      - resource-service
+      - reservation-service
+
+  postgres-auth:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: auth
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: auth
+
+  postgres-resource:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: resource
+      POSTGRES_USER: resource
+      POSTGRES_PASSWORD: resource
+
+  postgres-reservation:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: reservation
+      POSTGRES_USER: reservation
+      POSTGRES_PASSWORD: reservation
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - ./monitoring/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./monitoring/grafana/dashboard-providers.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+    ports:
+      - "9200:9200"
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.15.0
+    volumes:
+      - ./logging/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    ports:
+      - "5000:5000"
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch

@@ -1,0 +1,10 @@
+{
+  "title": "Errors",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Service Errors",
+      "targets": [{"expr": "sum(rate(auth_errors_total[5m]) + rate(resource_errors_total[5m]) + rate(reservation_errors_total[5m]))"}]
+    }
+  ]
+}

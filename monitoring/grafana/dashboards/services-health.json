@@ -1,0 +1,10 @@
+{
+  "title": "Services Health",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Auth Requests",
+      "targets": [{"expr": "sum(auth_requests_total)"}]
+    }
+  ]
+}

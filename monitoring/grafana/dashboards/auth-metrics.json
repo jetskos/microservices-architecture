@@ -1,0 +1,10 @@
+{
+  "title": "Authentication Metrics",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Auth Failures",
+      "targets": [{"expr": "rate(auth_failures_total[5m])"}]
+    }
+  ]
+}
