@@ -1,0 +1,5 @@
+Django==5.1.6
+gunicorn==23.0.0
+mozilla-django-oidc==4.0.1
+django-prometheus==2.3.1
+prometheus-client==0.21.1
