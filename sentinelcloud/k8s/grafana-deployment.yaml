@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-secrets
+  namespace: sentinelcloud
+type: Opaque
+stringData:
+  GF_SECURITY_ADMIN_USER: admin
+  GF_SECURITY_ADMIN_PASSWORD: admin
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: sentinelcloud
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: sentinelcloud
+data:
+  sentinelcloud-overview.json: |
+    {
+      "id": null,
+      "title": "SentinelCloud SOC Overview",
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Request Rate",
+          "targets": [
+            {"expr": "sum(rate(reservation_http_requests_total[1m])) + sum(rate(resource_http_requests_total[1m]))"}
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "HTTP 5xx",
+          "targets": [
+            {"expr": "sum(rate(reservation_http_requests_total{status=~'5..'}[5m])) + sum(rate(resource_http_requests_total{status=~'5..'}[5m]))"}
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Latency p95 Reservation",
+          "targets": [
+            {"expr": "histogram_quantile(0.95, sum(rate(reservation_http_request_latency_seconds_bucket[5m])) by (le))"}
+          ]
+        },
+        {
+          "type": "logs",
+          "title": "SOC Security Logs",
+          "targets": [
+            {"expr": "{namespace=\"sentinelcloud\",soc_tag=~\"SECURITY|ERROR\"}"}
+          ]
+        }
+      ]
+    }
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: SentinelCloud
+        orgId: 1
+        folder: SentinelCloud
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: sentinelcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.1.4
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: GF_SECURITY_ADMIN_USER
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: GF_SECURITY_ADMIN_PASSWORD
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboards
+            items:
+              - key: dashboards.yaml
+                path: dashboards.yaml
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+            items:
+              - key: sentinelcloud-overview.json
+                path: sentinelcloud-overview.json
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: sentinelcloud
+spec:
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000

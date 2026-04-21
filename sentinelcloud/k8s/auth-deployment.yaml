@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: auth-service-secrets
+  namespace: sentinelcloud
+type: Opaque
+stringData:
+  DJANGO_SECRET_KEY: change-me-in-prod
+  OIDC_RP_CLIENT_SECRET: sentinelcloud-secret
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: sentinelcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: sentinelcloud/auth-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-secrets
+                  key: DJANGO_SECRET_KEY
+            - name: OIDC_RP_CLIENT_ID
+              value: sentinelcloud-auth
+            - name: OIDC_RP_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-secrets
+                  key: OIDC_RP_CLIENT_SECRET
+            - name: OIDC_OP_AUTHORIZATION_ENDPOINT
+              value: http://keycloak:8080/realms/sentinelcloud/protocol/openid-connect/auth
+            - name: OIDC_OP_TOKEN_ENDPOINT
+              value: http://keycloak:8080/realms/sentinelcloud/protocol/openid-connect/token
+            - name: OIDC_OP_USER_ENDPOINT
+              value: http://keycloak:8080/realms/sentinelcloud/protocol/openid-connect/userinfo
+            - name: OIDC_OP_JWKS_ENDPOINT
+              value: http://keycloak:8080/realms/sentinelcloud/protocol/openid-connect/certs
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: sentinelcloud
+spec:
+  selector:
+    app: auth-service
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

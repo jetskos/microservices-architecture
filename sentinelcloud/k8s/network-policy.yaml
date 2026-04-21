@@ -1,0 +1,141 @@
+# Politique Zero-Trust: tout bloqué par défaut
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: sentinelcloud
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Ouverture explicite: ingress vers services applicatifs
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-apps
+  namespace: sentinelcloud
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["auth-service", "reservation-service", "resource-service"]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {}
+---
+# Ouverture explicite: auth-service -> keycloak
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-auth-to-keycloak
+  namespace: sentinelcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: keycloak
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: auth-service
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Ouverture explicite: FastAPI -> keycloak pour validation JWT/JWKS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-services-to-keycloak
+  namespace: sentinelcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: keycloak
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: reservation-service
+        - podSelector:
+            matchLabels:
+              app: resource-service
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Ouverture explicite: Prometheus scrape endpoints métriques
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: sentinelcloud
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["auth-service", "reservation-service", "resource-service"]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8001
+        - protocol: TCP
+          port: 8002
+---
+# Ouverture explicite: Promtail push vers Loki
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-promtail-to-loki
+  namespace: sentinelcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: loki
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: promtail
+      ports:
+        - protocol: TCP
+          port: 3100
+---
+# Ouverture explicite: Grafana -> Loki & Prometheus
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-grafana-to-observability
+  namespace: sentinelcloud
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["prometheus", "loki"]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: grafana
+      ports:
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 3100
