@@ -20,7 +20,7 @@ def make_token(user: str, role: str) -> str:
 
 def test_patient_cannot_create_for_other_patient(monkeypatch) -> None:
     async def _ok(_patient_id: str) -> None:
-        return None
+        pass
 
     monkeypatch.setattr(module, "verify_patient_exists", _ok)
     token = make_token("patient1", "patient")
@@ -34,7 +34,7 @@ def test_patient_cannot_create_for_other_patient(monkeypatch) -> None:
 
 def test_dentist_can_create_appointment(monkeypatch) -> None:
     async def _ok(_patient_id: str) -> None:
-        return None
+        pass
 
     monkeypatch.setattr(module, "verify_patient_exists", _ok)
     token = make_token("dentist1", "dentist")

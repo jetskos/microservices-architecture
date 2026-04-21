@@ -20,7 +20,7 @@ def test_reservation_uses_secured_user_token(monkeypatch) -> None:
     reservation_module = load_module(RES_APP_PATH, "reservation_integration")
 
     async def _ok(_patient_id: str) -> None:
-        return None
+        pass
 
     monkeypatch.setattr(reservation_module, "verify_patient_exists", _ok)
     client = TestClient(reservation_module.app)
