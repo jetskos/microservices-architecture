@@ -1,4 +1,4 @@
-Django==5.1.6
+Django==5.1.14
 gunicorn==23.0.0
 mozilla-django-oidc==4.0.1
 django-prometheus==2.3.1
