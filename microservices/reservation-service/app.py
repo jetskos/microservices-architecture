@@ -4,14 +4,20 @@ import json
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import jwt
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Histogram,
+    generate_latest,
+)
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-prod")
 JWT_ALGORITHM = "HS256"
@@ -19,10 +25,17 @@ AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8001")
 RESOURCE_SERVICE_URL = os.getenv("RESOURCE_SERVICE_URL", "http://localhost:8002")
 SERVICE_API_KEY = os.getenv("SERVICE_API_KEY", "reservation-secret")
 
-REQUESTS = Counter("reservation_requests_total", "Total requests", ["path", "method", "status"])
-LATENCY = Histogram("reservation_request_latency_seconds", "Request latency", ["path", "method"])
-ERRORS = Counter("reservation_errors_total", "Total errors", ["path"])
-CREATED_APPOINTMENTS = Counter("appointments_created_total", "Appointments created")
+REGISTRY = CollectorRegistry()
+REQUESTS = Counter(
+    "reservation_requests_total", "Total requests", ["path", "method", "status"], registry=REGISTRY
+)
+LATENCY = Histogram(
+    "reservation_request_latency_seconds", "Request latency", ["path", "method"], registry=REGISTRY
+)
+ERRORS = Counter("reservation_errors_total", "Total errors", ["path"], registry=REGISTRY)
+CREATED_APPOINTMENTS = Counter(
+    "appointments_created_total", "Appointments created", registry=REGISTRY
+)
 
 app = FastAPI(title="reservation-service")
 
@@ -70,7 +83,8 @@ def decode_bearer_token(authorization: str | None) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Missing bearer token")
     token = authorization.split(" ", 1)[1]
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return cast(dict[str, Any], payload)
     except jwt.PyJWTError as exc:
         audit_log("token_invalid", reason=str(exc))
         raise HTTPException(status_code=401, detail="Invalid token") from exc
@@ -87,7 +101,8 @@ async def fetch_service_token() -> str:
             json={"service_name": "reservation-service", "api_key": SERVICE_API_KEY},
         )
         response.raise_for_status()
-        return response.json()["access_token"]
+        body = cast(dict[str, str], response.json())
+        return body["access_token"]
 
 
 async def verify_patient_exists(patient_id: str) -> None:
@@ -108,11 +123,15 @@ async def health() -> dict[str, str]:
 
 @app.get("/metrics")
 async def metrics() -> PlainTextResponse:
-    return PlainTextResponse(generate_latest().decode("utf-8"), media_type=CONTENT_TYPE_LATEST)
+    return PlainTextResponse(
+        generate_latest(REGISTRY).decode("utf-8"), media_type=CONTENT_TYPE_LATEST
+    )
 
 
 @app.get("/appointments")
-async def list_appointments(user: dict[str, Any] = Depends(get_current_user)) -> list[dict[str, str]]:
+async def list_appointments(
+    user: dict[str, Any] = Depends(get_current_user),
+) -> list[dict[str, str]]:
     if user.get("role") in {"dentist", "admin"}:
         return APPOINTMENTS
     return [appt for appt in APPOINTMENTS if appt["patient_id"] == user.get("sub")]
@@ -125,7 +144,9 @@ async def create_appointment(
 ) -> dict[str, Any]:
     if user.get("role") == "patient" and user.get("sub") != payload.patient_id:
         audit_log("reservation_denied", user=user.get("sub"), patient_id=payload.patient_id)
-        raise HTTPException(status_code=403, detail="Patients can only create their own appointments")
+        raise HTTPException(
+            status_code=403, detail="Patients can only create their own appointments"
+        )
 
     await verify_patient_exists(payload.patient_id)
     APPOINTMENTS.append(

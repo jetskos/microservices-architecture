@@ -25,5 +25,7 @@ Services:
 python -m pip install -r requirements-dev.txt
 pytest
 flake8 .
-mypy microservices
+mypy microservices/auth-service
+mypy microservices/resource-service
+mypy microservices/reservation-service
 ```

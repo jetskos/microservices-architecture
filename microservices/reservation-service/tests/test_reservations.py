@@ -13,7 +13,9 @@ client = TestClient(module.app)
 
 
 def make_token(user: str, role: str) -> str:
-    return module.jwt.encode({"sub": user, "role": role}, module.JWT_SECRET, algorithm=module.JWT_ALGORITHM)
+    return module.jwt.encode(
+        {"sub": user, "role": role}, module.JWT_SECRET, algorithm=module.JWT_ALGORITHM
+    )
 
 
 def test_patient_cannot_create_for_other_patient(monkeypatch) -> None:

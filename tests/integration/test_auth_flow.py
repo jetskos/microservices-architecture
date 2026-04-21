@@ -4,7 +4,9 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 AUTH_APP_PATH = Path(__file__).resolve().parents[2] / "microservices" / "auth-service" / "app.py"
-RESOURCE_APP_PATH = Path(__file__).resolve().parents[2] / "microservices" / "resource-service" / "app.py"
+RESOURCE_APP_PATH = (
+    Path(__file__).resolve().parents[2] / "microservices" / "resource-service" / "app.py"
+)
 
 
 def load_module(path: Path, name: str):
@@ -26,5 +28,7 @@ def test_login_and_access_protected_resource() -> None:
     assert login.status_code == 200
     token = login.json()["access_token"]
 
-    resource = resource_client.get("/records/patient1", headers={"Authorization": f"Bearer {token}"})
+    resource = resource_client.get(
+        "/records/patient1", headers={"Authorization": f"Bearer {token}"}
+    )
     assert resource.status_code == 200

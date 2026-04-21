@@ -18,7 +18,12 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Lint
         run: flake8 .
+      - name: Format check
+        run: black --check .
       - name: Type check
-        run: mypy microservices
+        run: |
+          mypy microservices/auth-service
+          mypy microservices/resource-service
+          mypy microservices/reservation-service
       - name: Test
         run: pytest

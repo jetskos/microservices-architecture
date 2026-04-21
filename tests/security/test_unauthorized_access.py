@@ -3,7 +3,9 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-RESOURCE_APP_PATH = Path(__file__).resolve().parents[2] / "microservices" / "resource-service" / "app.py"
+RESOURCE_APP_PATH = (
+    Path(__file__).resolve().parents[2] / "microservices" / "resource-service" / "app.py"
+)
 
 
 def load_module(path: Path, name: str):

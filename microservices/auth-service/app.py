@@ -4,24 +4,35 @@ import json
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 
 import bcrypt
 import jwt
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Histogram,
+    generate_latest,
+)
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-prod")
 JWT_ALGORITHM = "HS256"
 SERVICE_API_KEY = os.getenv("SERVICE_API_KEY", "reservation-secret")
 
-REQUESTS = Counter("auth_requests_total", "Total requests", ["path", "method", "status"])
-LATENCY = Histogram("auth_request_latency_seconds", "Request latency", ["path", "method"])
-ERRORS = Counter("auth_errors_total", "Total errors", ["path"])
-AUTH_FAILURES = Counter("auth_failures_total", "Authentication failures")
-AUTH_SUCCESSES = Counter("auth_success_total", "Authentication successes")
+REGISTRY = CollectorRegistry()
+REQUESTS = Counter(
+    "auth_requests_total", "Total requests", ["path", "method", "status"], registry=REGISTRY
+)
+LATENCY = Histogram(
+    "auth_request_latency_seconds", "Request latency", ["path", "method"], registry=REGISTRY
+)
+ERRORS = Counter("auth_errors_total", "Total errors", ["path"], registry=REGISTRY)
+AUTH_FAILURES = Counter("auth_failures_total", "Authentication failures", registry=REGISTRY)
+AUTH_SUCCESSES = Counter("auth_success_total", "Authentication successes", registry=REGISTRY)
 
 app = FastAPI(title="auth-service")
 
@@ -64,14 +75,17 @@ def audit_log(event: str, **payload: Any) -> None:
     )
 
 
-def create_access_token(subject: str, role: str, expires_minutes: int = 30, token_type: str = "user") -> str:
+def create_access_token(
+    subject: str, role: str, expires_minutes: int = 30, token_type: str = "user"
+) -> str:
     expires = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
     payload = {"sub": subject, "role": role, "type": token_type, "exp": expires}
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def decode_token(token: str) -> dict[str, Any]:
-    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    return cast(dict[str, Any], payload)
 
 
 @app.middleware("http")
@@ -99,7 +113,9 @@ async def health() -> dict[str, str]:
 
 @app.get("/metrics")
 async def metrics() -> PlainTextResponse:
-    return PlainTextResponse(generate_latest().decode("utf-8"), media_type=CONTENT_TYPE_LATEST)
+    return PlainTextResponse(
+        generate_latest(REGISTRY).decode("utf-8"), media_type=CONTENT_TYPE_LATEST
+    )
 
 
 @app.post("/login")
@@ -137,6 +153,8 @@ async def service_token(data: ServiceTokenRequest) -> dict[str, str]:
         audit_log("service_token_denied", service=data.service_name)
         raise HTTPException(status_code=401, detail="Invalid service credentials")
 
-    token = create_access_token(data.service_name, "service", expires_minutes=5, token_type="service")
+    token = create_access_token(
+        data.service_name, "service", expires_minutes=5, token_type="service"
+    )
     audit_log("service_token_issued", service=data.service_name)
     return {"access_token": token, "token_type": "bearer"}

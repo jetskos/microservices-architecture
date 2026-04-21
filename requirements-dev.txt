@@ -8,3 +8,4 @@ bcrypt
 prometheus-client
 flake8
 mypy
+black

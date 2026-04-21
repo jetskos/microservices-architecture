@@ -4,21 +4,32 @@ import json
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 import jwt
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Histogram,
+    generate_latest,
+)
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-prod")
 JWT_ALGORITHM = "HS256"
 
-REQUESTS = Counter("resource_requests_total", "Total requests", ["path", "method", "status"])
-LATENCY = Histogram("resource_request_latency_seconds", "Request latency", ["path", "method"])
-ERRORS = Counter("resource_errors_total", "Total errors", ["path"])
-ACCESS_DENIED = Counter("resource_access_denied_total", "Access denied events")
+REGISTRY = CollectorRegistry()
+REQUESTS = Counter(
+    "resource_requests_total", "Total requests", ["path", "method", "status"], registry=REGISTRY
+)
+LATENCY = Histogram(
+    "resource_request_latency_seconds", "Request latency", ["path", "method"], registry=REGISTRY
+)
+ERRORS = Counter("resource_errors_total", "Total errors", ["path"], registry=REGISTRY)
+ACCESS_DENIED = Counter("resource_access_denied_total", "Access denied events", registry=REGISTRY)
 
 app = FastAPI(title="resource-service")
 
@@ -68,7 +79,8 @@ def decode_bearer_token(authorization: str | None) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Missing bearer token")
     token = authorization.split(" ", 1)[1]
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return cast(dict[str, Any], payload)
     except jwt.PyJWTError as exc:
         audit_log("token_invalid", reason=str(exc))
         raise HTTPException(status_code=401, detail="Invalid token") from exc
@@ -92,11 +104,15 @@ async def health() -> dict[str, str]:
 
 @app.get("/metrics")
 async def metrics() -> PlainTextResponse:
-    return PlainTextResponse(generate_latest().decode("utf-8"), media_type=CONTENT_TYPE_LATEST)
+    return PlainTextResponse(
+        generate_latest(REGISTRY).decode("utf-8"), media_type=CONTENT_TYPE_LATEST
+    )
 
 
 @app.get("/records/{patient_id}")
-async def get_record(patient_id: str, user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+async def get_record(
+    patient_id: str, user: dict[str, Any] = Depends(get_current_user)
+) -> dict[str, Any]:
     if not can_read_record(user, patient_id):
         ACCESS_DENIED.inc()
         audit_log("rbac_denied", user=user.get("sub"), role=user.get("role"), patient_id=patient_id)
@@ -118,7 +134,9 @@ async def update_record(
 ) -> dict[str, Any]:
     if user.get("role") != "admin":
         ACCESS_DENIED.inc()
-        audit_log("rbac_denied", user=user.get("sub"), role=user.get("role"), action="update_record")
+        audit_log(
+            "rbac_denied", user=user.get("sub"), role=user.get("role"), action="update_record"
+        )
         raise HTTPException(status_code=403, detail="Admin role required")
 
     if patient_id not in PATIENT_RECORDS:
