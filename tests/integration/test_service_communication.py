@@ -16,7 +16,7 @@ def load_module(path: Path, name: str):
     return module
 
 
-def test_reservation_uses_secured_user_token(monkeypatch) -> None:
+def test_dentist_can_create_appointment_for_patient(monkeypatch) -> None:
     reservation_module = load_module(RES_APP_PATH, "reservation_integration")
 
     async def _ok(_patient_id: str) -> None:
